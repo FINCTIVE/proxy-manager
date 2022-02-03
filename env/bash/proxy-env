@@ -1,0 +1,46 @@
+#!/bin/bash
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+echo "Please use dot prefix, example:"
+echo "$ . proxy-env help"
+exit 1
+fi
+
+if [ -z $1 ]; then
+echo "error: no command"
+exit 1
+fi
+
+if [ $1 = "help" ] || [ $1 = "-help" ] || [ $1 = "--help" ]; then
+echo 'Commands:
+  status  echo environment variables
+  on      export environment variables
+  off     unset environment variables'
+exit 0
+fi 
+
+if [ $1 = "on" ]; then
+export http_proxy="http://127.0.0.1:1080"
+export https_proxy=$http_proxy
+export HTTP_PROXY=$http_proxy
+export HTTPS_PROXY=$http_proxy
+exit 0
+fi
+
+if [ $1 = "off" ]; then
+unset http_proxy
+unset https_proxy
+unset HTTP_PROXY
+unset HTTPS_PROXY
+exit 0
+fi
+
+if [ $1 = "status" ]; then
+echo http_proxy=\"$http_proxy\"
+echo https_proxy=\"$https_proxy\"
+echo HTTP_PROXY=\"$HTTP_PROXY\"
+echo HTTPS_PROXY=\"$HTTPS_PROXY\"
+exit 0
+fi
+
+echo "error: unknown command \"$1\""
+exit 1

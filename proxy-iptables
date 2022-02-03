@@ -1,0 +1,94 @@
+#!/bin/bash
+if [ -z $1 ]; then
+echo "error: no command"
+exit 1
+fi
+
+if [ $1 = "help" ] || [ $1 = "-help" ] || [ $1 = "--help" ]; then
+echo 'Commands:
+  status  check whether the iptables chain exists
+  on      set up iptables to proxy
+  off     remove the iptables proxy chain'
+exit 0
+fi
+
+# Set up env
+if [ -z $TRANS_CHAIN_NAME ]; then
+  TRANS_CHAIN_NAME="TRANS_PROXY"
+fi
+if [ -z $TRANS_SO_MARK ]; then
+  TRANS_SO_MARK="0xff" # 0xff = 255
+fi
+if [ -z $TRANS_TARGET_PORT ]; then
+  TRANS_TARGET_PORT="12345"
+fi
+
+# Commands
+
+function check_chain_exist {
+  sudo iptables -t nat --list $TRANS_CHAIN_NAME > /dev/null 2>&1
+}
+
+if [ $1 = "status" ]; then
+  check_chain_exist
+  CHECK_CHAIN_RESULT=$?
+  echo -e "nat table:\n"
+  sudo iptables -t nat --list
+  echo -e "\n\n"
+  if [ $CHECK_CHAIN_RESULT = 0 ]; then
+    echo "Transparent proxy is on"
+    echo "iptables chain $TRANS_CHAIN_NAME exists"
+  else
+    echo "Transparent proxy is off"
+    echo "iptables chain $TRANS_CHAIN_NAME does not exist"
+  fi
+  exit 0
+fi
+
+if [ $1 = "on" ]; then
+  check_chain_exist
+  if [ $? = 0 ]; then
+    echo "Chain $TRANS_CHAIN_NAME exists"
+    echo "Quit"
+    exit 1
+  fi
+
+  # 1. set up rules for the proxy chain $TRANS_CHAIN_NAME
+  # create
+  sudo iptables -t nat -N $TRANS_CHAIN_NAME
+  # return, no proxy for local network
+  sudo iptables -t nat -A $TRANS_CHAIN_NAME -d 192.168.0.0/16 -j RETURN 
+  # return, no proxy for marked packets to avoid infinity loop
+  sudo iptables -t nat -A $TRANS_CHAIN_NAME -p tcp -j RETURN -m mark --mark $TRANS_SO_MARK
+  # redirect everything to proxy port
+  sudo iptables -t nat -A $TRANS_CHAIN_NAME -p tcp -j REDIRECT --to-ports $TRANS_TARGET_PORT
+
+  # 2. redirect to $TRANS_CHAIN_NAME chain
+  # for router
+  sudo iptables -t nat -A PREROUTING -p tcp -j $TRANS_CHAIN_NAME 
+  # for local machine
+  sudo iptables -t nat -A OUTPUT -p tcp -j $TRANS_CHAIN_NAME 
+
+  exit 0
+fi
+
+if [ $1 = "off" ]; then
+  check_chain_exist
+  if [ $? != 0 ]; then
+    echo "Chain $TRANS_CHAIN_NAME not exists"
+    echo "Quit"
+    exit 1
+  fi
+
+  # relevent rules on other chains were removed automatically
+  sudo iptables -t nat -D PREROUTING -p tcp -j $TRANS_CHAIN_NAME
+  sudo iptables -t nat -D OUTPUT -p tcp -j $TRANS_CHAIN_NAME
+  # clear rules on the chain
+  sudo iptables -t nat -F $TRANS_CHAIN_NAME
+  # remove the chain
+  sudo iptables -t nat -X $TRANS_CHAIN_NAME
+  exit 0
+fi
+
+echo "error: unknown command \"$1\""
+exit 1
